@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright
 import requests
 
 SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
+SLACK_TAG = "<@U0BDSG0NF7B>"
 STATE_FILE = "state.json"
 
 PAGES = {
@@ -65,14 +66,14 @@ def main():
                 if new_items:
                     items_text = "\n".join(f"• {item}" for item in sorted(new_items))
                     message = (
-                        f":new: *New content on Trackr — {name}*\n"
+                        f"{SLACK_TAG} :new: *New content on Trackr — {name}*\n"
                         f"<{url}|View listings>\n\n"
                         f"{items_text}"
                     )
                     notify_slack(message)
                     print(f"  Notified Slack: {len(new_items)} new item(s)")
                 else:
-                    notify_slack(f":white_check_mark: *{name}* — no new listings in the last 15 mins.")
+                    notify_slack(f"{SLACK_TAG} :white_check_mark: *{name}* — no new listings in the last 15 mins.")
                     print(f"  No changes")
 
             state[name] = {"lines": current_lines}
