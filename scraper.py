@@ -72,6 +72,7 @@ def main():
                     notify_slack(message)
                     print(f"  Notified Slack: {len(new_items)} new item(s)")
                 else:
+                    notify_slack(f":white_check_mark: *{name}* — no new listings in the last 15 mins.")
                     print(f"  No changes")
 
             state[name] = {"lines": current_lines}
