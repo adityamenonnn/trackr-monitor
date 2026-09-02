@@ -1,6 +1,6 @@
 # Trackr Monitor
 
-Watches the [Trackr](https://app.the-trackr.com) UK tech internship and placement listings every 15 minutes and sends you a Slack message when anything new appears.
+Watches the [Trackr](https://app.the-trackr.com) UK tech internship and placement listings every 30 minutes and sends you a Slack message when anything new appears.
 
 **Monitors:**
 - UK Tech → Summer Internships
@@ -10,7 +10,7 @@ Watches the [Trackr](https://app.the-trackr.com) UK tech internship and placemen
 
 ## How it works
 
-- A cron service (cron-job.org) triggers a GitHub Actions workflow every 15 minutes
+- A cron service (cron-job.org) triggers a GitHub Actions workflow every 30 minutes
 - The workflow uses a headless browser to load both Trackr pages
 - It compares the current listings against the last saved state
 - If anything new appears, it pings you on Slack with the details
@@ -66,7 +66,7 @@ So the bot tags you in messages:
 |---|---|
 | Title | Trackr Monitor |
 | URL | `https://api.github.com/repos/YOUR_GITHUB_USERNAME/trackr-monitor/actions/workflows/monitor.yml/dispatches` |
-| Schedule | Every 15 minutes |
+| Schedule | Every 30 minutes |
 | Request method | `POST` |
 
 3. Expand **Advanced** → **Headers** and add:
@@ -89,7 +89,7 @@ So the bot tags you in messages:
 
 In your forked repo → **Actions** → **Monitor Trackr** → **Run workflow**
 
-This first run saves the current listings as a baseline (no Slack message sent). After this, every 15-minute run will compare against it and notify you of anything new.
+This first run saves the current listings as a baseline (no Slack message sent). After this, every 30-minute run will compare against it and notify you of anything new.
 
 ---
 
