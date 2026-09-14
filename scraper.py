@@ -10,6 +10,7 @@ STATE_FILE = "state.json"
 PAGES = {
     "Summer Internships": "https://app.the-trackr.com/uk-tech/summer-internships",
     "Industrial Placements": "https://app.the-trackr.com/uk-tech/industrial-placements",
+    "Events": "https://app.the-trackr.com/uk-tech/events",
 }
 
 
@@ -82,8 +83,9 @@ def main():
             else:
                 new_items = current_set - old_set
 
-                # Only keep lines that look like listing rows (contain tabs)
+                # Tab-separated rows are listings; others may be events
                 new_listings = [item for item in new_items if "\t" in item]
+                new_other = [item for item in new_items if "\t" not in item]
 
                 if new_listings:
                     formatted = [format_listing(l) for l in sorted(new_listings)]
@@ -91,11 +93,20 @@ def main():
                     items_text = "\n\n".join(f"• {f}" for f in formatted)
                     message = (
                         f"{SLACK_TAG} :new: *New listing(s) on Trackr — {name}*\n"
-                        f"<{url}|View listings>\n\n"
+                        f"<{url}|View page>\n\n"
                         f"{items_text}"
                     )
                     notify_slack(message)
                     print(f"  Notified Slack: {len(new_listings)} new listing(s)")
+                elif new_other:
+                    items_text = "\n".join(f"• {l}" for l in sorted(new_other))
+                    message = (
+                        f"{SLACK_TAG} :new: *New item(s) on Trackr — {name}*\n"
+                        f"<{url}|View page>\n\n"
+                        f"{items_text}"
+                    )
+                    notify_slack(message)
+                    print(f"  Notified Slack: {len(new_other)} new item(s)")
                 else:
                     notify_slack(f":white_check_mark: *{name}* — no new listings in the last 30 mins.")
                     print(f"  No changes")
