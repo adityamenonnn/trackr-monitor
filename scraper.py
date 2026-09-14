@@ -14,6 +14,9 @@ PAGES = {
 }
 
 
+NOISE_PATTERNS = ["total views", "views today"]
+
+
 def extract_lines(page, url):
     page.goto(url, wait_until="networkidle", timeout=60000)
     page.wait_for_timeout(3000)
@@ -21,27 +24,44 @@ def extract_lines(page, url):
     text = page.inner_text("body")
     lines = [line.strip() for line in text.splitlines()]
     lines = [l for l in lines if len(l) > 15]
+    lines = [l for l in lines if not any(p in l.lower() for p in NOISE_PATTERNS)]
     return lines
 
 
-def format_listing(line):
-    """Parse a tab-separated listing row into a readable Slack message block."""
+def format_listing(line, is_event=False):
+    """Parse a tab-separated row into a readable Slack message block."""
     if "\t" not in line:
         return None
     parts = [p.strip() for p in line.split("\t")]
     company = parts[0] if len(parts) > 0 else ""
-    role = parts[1] if len(parts) > 1 else ""
-    opening = parts[2] if len(parts) > 2 else ""
-    closing = parts[3] if len(parts) > 3 else ""
+    name = parts[1] if len(parts) > 1 else ""
 
-    if not company or not role:
+    if not company or not name:
         return None
 
-    text = f"*{company}* — {role}"
-    if opening:
-        text += f"\n    Opens: {opening}"
-    if closing:
-        text += f"  |  Closes: {closing}"
+    if is_event:
+        # Events: Company | Programme | Eligibility | Opening | Closing | Format | Event Date
+        opening = parts[3] if len(parts) > 3 else ""
+        closing = parts[4] if len(parts) > 4 else ""
+        fmt = parts[5] if len(parts) > 5 else ""
+        event_date = parts[6] if len(parts) > 6 else ""
+        text = f"*{company}* — {name}"
+        if event_date:
+            text += f"\n    Event: {event_date}"
+        if fmt:
+            text += f" ({fmt})"
+        if opening:
+            text += f"\n    Apply: {opening}"
+        if closing:
+            text += f" to {closing}"
+    else:
+        opening = parts[2] if len(parts) > 2 else ""
+        closing = parts[3] if len(parts) > 3 else ""
+        text = f"*{company}* — {name}"
+        if opening:
+            text += f"\n    Opens: {opening}"
+        if closing:
+            text += f"  |  Closes: {closing}"
     return text
 
 
@@ -83,12 +103,12 @@ def main():
             else:
                 new_items = current_set - old_set
 
-                # Tab-separated rows are listings; others may be events
+                # Only keep lines that look like actual listings (tab-separated)
                 new_listings = [item for item in new_items if "\t" in item]
-                new_other = [item for item in new_items if "\t" not in item]
 
                 if new_listings:
-                    formatted = [format_listing(l) for l in sorted(new_listings)]
+                    is_event = name == "Events"
+                    formatted = [format_listing(l, is_event=is_event) for l in sorted(new_listings)]
                     formatted = [f for f in formatted if f]
                     items_text = "\n\n".join(f"• {f}" for f in formatted)
                     message = (
@@ -98,15 +118,6 @@ def main():
                     )
                     notify_slack(message)
                     print(f"  Notified Slack: {len(new_listings)} new listing(s)")
-                elif new_other:
-                    items_text = "\n".join(f"• {l}" for l in sorted(new_other))
-                    message = (
-                        f"{SLACK_TAG} :new: *New item(s) on Trackr — {name}*\n"
-                        f"<{url}|View page>\n\n"
-                        f"{items_text}"
-                    )
-                    notify_slack(message)
-                    print(f"  Notified Slack: {len(new_other)} new item(s)")
                 else:
                     notify_slack(f":white_check_mark: *{name}* — no new listings in the last 30 mins.")
                     print(f"  No changes")
