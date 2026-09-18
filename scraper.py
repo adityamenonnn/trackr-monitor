@@ -25,7 +25,25 @@ def extract_lines(page, url):
     lines = [line.strip() for line in text.splitlines()]
     lines = [l for l in lines if len(l) > 15]
     lines = [l for l in lines if not any(p in l.lower() for p in NOISE_PATTERNS)]
-    return lines
+
+    # Carry forward company name to child rows that lack one.
+    # Trackr groups multiple programmes under one company, so child rows
+    # appear as plain text (no tabs) right after a tab-separated parent row.
+    fixed = []
+    last_company = ""
+    for l in lines:
+        if "\t" in l:
+            parts = l.split("\t")
+            if parts[0].strip():
+                last_company = parts[0].strip()
+            fixed.append(l)
+        else:
+            # Orphan row — attach the last seen company name
+            if last_company:
+                fixed.append(f"{last_company}\t{l}")
+            else:
+                fixed.append(l)
+    return fixed
 
 
 def format_listing(line, is_event=False):
