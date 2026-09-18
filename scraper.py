@@ -11,49 +11,24 @@ PAGES = {
     "Summer Internships": "https://app.the-trackr.com/uk-tech/summer-internships",
     "Industrial Placements": "https://app.the-trackr.com/uk-tech/industrial-placements",
     "Events": "https://app.the-trackr.com/uk-tech/events",
-    "SimplyTK": "https://simplytk.com/internship-tracker?programme=summer_internship%2Cindustrial_placement",
 }
 
 
-NOISE_PATTERNS = ["total views", "views today", "live uk openings"]
-
-SIMPLYTK_PAGES = {"SimplyTK"}
+NOISE_PATTERNS = ["total views", "views today"]
 
 
-def strip_posted_column(line):
-    """Remove the last tab-separated field if it looks like a relative time (e.g. '4 hours ago')."""
-    if "\t" not in line:
-        return line
-    parts = line.rsplit("\t", 1)
-    if "ago" in parts[-1].lower():
-        return parts[0]
-    return line
-
-
-def extract_lines(page, url, strip_posted=False):
+def extract_lines(page, url):
     page.goto(url, wait_until="networkidle", timeout=60000)
     page.wait_for_timeout(3000)
-
-    # Scroll to bottom to trigger any lazy-loaded content
-    prev_height = 0
-    for _ in range(10):
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(1000)
-        curr_height = page.evaluate("document.body.scrollHeight")
-        if curr_height == prev_height:
-            break
-        prev_height = curr_height
 
     text = page.inner_text("body")
     lines = [line.strip() for line in text.splitlines()]
     lines = [l for l in lines if len(l) > 15]
     lines = [l for l in lines if not any(p in l.lower() for p in NOISE_PATTERNS)]
-    if strip_posted:
-        lines = [strip_posted_column(l) for l in lines]
     return lines
 
 
-def format_listing(line, page_type="listing"):
+def format_listing(line, is_event=False):
     """Parse a tab-separated row into a readable Slack message block."""
     if "\t" not in line:
         return None
@@ -64,7 +39,7 @@ def format_listing(line, page_type="listing"):
     if not company or not name:
         return None
 
-    if page_type == "event":
+    if is_event:
         # Events: Company | Programme | Eligibility | Opening | Closing | Format | Event Date
         opening = parts[3] if len(parts) > 3 else ""
         closing = parts[4] if len(parts) > 4 else ""
@@ -79,18 +54,6 @@ def format_listing(line, page_type="listing"):
             text += f"\n    Apply: {opening}"
         if closing:
             text += f" to {closing}"
-    elif page_type == "simplytk":
-        # SimplyTK: Company | Role | Programme | Location | Deadline (posted already stripped)
-        programme = parts[2] if len(parts) > 2 else ""
-        location = parts[3] if len(parts) > 3 else ""
-        deadline = parts[4] if len(parts) > 4 else ""
-        text = f"*{company}* — {name}"
-        if programme:
-            text += f" ({programme})"
-        if location:
-            text += f"\n    Location: {location}"
-        if deadline and deadline != "·":
-            text += f"  |  Deadline: {deadline}"
     else:
         opening = parts[2] if len(parts) > 2 else ""
         closing = parts[3] if len(parts) > 3 else ""
@@ -129,8 +92,7 @@ def main():
         for name, url in PAGES.items():
             print(f"Checking {name}...")
 
-            is_simplytk = name in SIMPLYTK_PAGES
-            current_lines = extract_lines(pg, url, strip_posted=is_simplytk)
+            current_lines = extract_lines(pg, url)
             current_set = set(current_lines)
 
             old_lines = state.get(name, {}).get("lines", [])
@@ -145,24 +107,19 @@ def main():
                 new_listings = [item for item in new_items if "\t" in item]
 
                 if new_listings:
-                    if name == "Events":
-                        page_type = "event"
-                    elif is_simplytk:
-                        page_type = "simplytk"
-                    else:
-                        page_type = "listing"
-                    formatted = [format_listing(l, page_type=page_type) for l in sorted(new_listings)]
+                    is_event = name == "Events"
+                    formatted = [format_listing(l, is_event=is_event) for l in sorted(new_listings)]
                     formatted = [f for f in formatted if f]
                     items_text = "\n\n".join(f"• {f}" for f in formatted)
                     message = (
-                        f"{SLACK_TAG} :new: *New listing(s) — {name}*\n"
+                        f"{SLACK_TAG} :new: *New listing(s) on Trackr — {name}*\n"
                         f"<{url}|View page>\n\n"
                         f"{items_text}"
                     )
                     notify_slack(message)
                     print(f"  Notified Slack: {len(new_listings)} new listing(s)")
                 else:
-                    notify_slack(f":white_check_mark: *{name}* — no changes in the last 30 mins.")
+                    notify_slack(f":white_check_mark: *{name}* — no new listings in the last 30 mins.")
                     print(f"  No changes")
 
             state[name] = {"lines": current_lines}
