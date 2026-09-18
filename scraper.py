@@ -93,7 +93,6 @@ def extract_lines(page, url):
     last_company = ""
     for l in lines:
         if is_junk(l) or is_section_header(l):
-            last_company = ""
             continue
         if is_date_fragment(l):
             continue
