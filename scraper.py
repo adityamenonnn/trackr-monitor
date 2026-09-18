@@ -34,6 +34,16 @@ def extract_lines(page, url, strip_posted=False):
     page.goto(url, wait_until="networkidle", timeout=60000)
     page.wait_for_timeout(3000)
 
+    # Scroll to bottom to trigger any lazy-loaded content
+    prev_height = 0
+    for _ in range(10):
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        page.wait_for_timeout(1000)
+        curr_height = page.evaluate("document.body.scrollHeight")
+        if curr_height == prev_height:
+            break
+        prev_height = curr_height
+
     text = page.inner_text("body")
     lines = [line.strip() for line in text.splitlines()]
     lines = [l for l in lines if len(l) > 15]
