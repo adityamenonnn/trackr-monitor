@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from playwright.sync_api import sync_playwright
 import requests
 
@@ -15,6 +16,65 @@ PAGES = {
 
 
 NOISE_PATTERNS = ["total views", "views today"]
+
+# Lines that are page chrome, not listings
+JUNK_PATTERNS = [
+    "noticed a missing programme",
+    "leading application trackers",
+    "exclusive opportunities",
+    "info@the-trackr.com",
+    "terms & conditions",
+    "all rights reserved",
+    "create your account",
+    "free account on trackr",
+    "trackr exclusive",
+    "ai cv review",
+    "application progress",
+    "early-career opportunity",
+    "less than two minutes",
+    "apply via email",
+    "get notifications",
+    "filter by",
+    "no filters applied",
+    "open programmes only",
+    "recently opened only",
+    "cover letter required",
+    "cover letter not required",
+    "part-time alongside",
+    "based in amsterdam",
+    "hr note:",
+]
+
+# Section headers and nav items on Trackr (reset carry-forward, not listings)
+SECTION_HEADERS = {
+    "software engineering",
+    "data science",
+    "ai and machine learning",
+    "devops and infrastructure",
+    "trading and quantitative",
+    "consulting",
+    "cybersecurity",
+    "it and support",
+    "other",
+    "summer internships",
+    "industrial placements",
+    "graduate schemes",
+    "events",
+}
+
+
+def is_junk(line):
+    low = line.lower()
+    return any(p in low for p in JUNK_PATTERNS)
+
+
+def is_section_header(line):
+    return line.lower().strip() in SECTION_HEADERS
+
+
+def is_date_fragment(line):
+    """Lines like '16 Sep 26' or '02 Sep 26\t11 Oct 26' are date fragments, not programmes."""
+    return bool(re.match(r"^[\d]{2} \w{3} \d{2}", line.strip()))
 
 
 def extract_lines(page, url):
@@ -32,13 +92,18 @@ def extract_lines(page, url):
     fixed = []
     last_company = ""
     for l in lines:
+        if is_junk(l) or is_section_header(l):
+            last_company = ""
+            continue
+        if is_date_fragment(l):
+            continue
         if "\t" in l:
             parts = l.split("\t")
             if parts[0].strip():
                 last_company = parts[0].strip()
             fixed.append(l)
         else:
-            # Orphan row — attach the last seen company name
+            # Orphan row: only attach company if it looks like a programme name
             if last_company:
                 fixed.append(f"{last_company}\t{l}")
             else:
