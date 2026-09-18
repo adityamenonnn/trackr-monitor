@@ -16,12 +16,23 @@ PAGES = {
 NOISE_PATTERNS = ["total views", "views today"]
 
 
-def extract_rows(page, url):
+def extract_rows(page, url, debug=False):
     """Extract only tab-separated table rows from the page."""
     page.goto(url, wait_until="networkidle", timeout=60000)
     page.wait_for_timeout(3000)
 
     text = page.inner_text("body")
+
+    if debug:
+        # Dump lines around any mention of BAE for debugging
+        all_lines = text.splitlines()
+        for i, l in enumerate(all_lines):
+            if "bae" in l.lower():
+                start = max(0, i - 2)
+                end = min(len(all_lines), i + 5)
+                for j in range(start, end):
+                    print(f"  DEBUG [{j}]: {repr(all_lines[j])}")
+
     lines = [line.strip() for line in text.splitlines()]
     lines = [l for l in lines if "\t" in l]
     lines = [l for l in lines if not any(p in l.lower() for p in NOISE_PATTERNS)]
@@ -89,7 +100,7 @@ def main():
         for name, url in PAGES.items():
             print(f"Checking {name}...")
 
-            current_lines = extract_rows(pg, url)
+            current_lines = extract_rows(pg, url, debug=(name == "Industrial Placements"))
             current_set = set(current_lines)
 
             old_lines = state.get(name, {}).get("lines", [])
@@ -97,6 +108,8 @@ def main():
 
             if not old_set:
                 print(f"  First run — saving baseline ({len(current_lines)} rows)")
+                for l in current_lines[:5]:
+                    print(f"    SAMPLE: {repr(l)}")
             else:
                 new_listings = current_set - old_set
 
