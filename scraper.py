@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from playwright.sync_api import sync_playwright
 import requests
 
@@ -14,106 +13,23 @@ PAGES = {
     "Events": "https://app.the-trackr.com/uk-tech/events",
 }
 
-
 NOISE_PATTERNS = ["total views", "views today"]
 
-# Lines that are page chrome, not listings
-JUNK_PATTERNS = [
-    "noticed a missing programme",
-    "leading application trackers",
-    "exclusive opportunities",
-    "info@the-trackr.com",
-    "terms & conditions",
-    "all rights reserved",
-    "create your account",
-    "free account on trackr",
-    "trackr exclusive",
-    "ai cv review",
-    "application progress",
-    "early-career opportunity",
-    "less than two minutes",
-    "apply via email",
-    "get notifications",
-    "filter by",
-    "no filters applied",
-    "open programmes only",
-    "recently opened only",
-    "cover letter required",
-    "cover letter not required",
-    "part-time alongside",
-    "based in amsterdam",
-    "hr note:",
-]
 
-# Section headers and nav items on Trackr (reset carry-forward, not listings)
-SECTION_HEADERS = {
-    "software engineering",
-    "data science",
-    "ai and machine learning",
-    "devops and infrastructure",
-    "trading and quantitative",
-    "consulting",
-    "cybersecurity",
-    "it and support",
-    "other",
-    "summer internships",
-    "industrial placements",
-    "graduate schemes",
-    "events",
-}
-
-
-def is_junk(line):
-    low = line.lower()
-    return any(p in low for p in JUNK_PATTERNS)
-
-
-def is_section_header(line):
-    return line.lower().strip() in SECTION_HEADERS
-
-
-def is_date_fragment(line):
-    """Lines like '16 Sep 26' or '02 Sep 26\t11 Oct 26' are date fragments, not programmes."""
-    return bool(re.match(r"^[\d]{2} \w{3} \d{2}", line.strip()))
-
-
-def extract_lines(page, url):
+def extract_rows(page, url):
+    """Extract only tab-separated table rows from the page."""
     page.goto(url, wait_until="networkidle", timeout=60000)
     page.wait_for_timeout(3000)
 
     text = page.inner_text("body")
     lines = [line.strip() for line in text.splitlines()]
-    lines = [l for l in lines if len(l) > 15]
+    lines = [l for l in lines if "\t" in l]
     lines = [l for l in lines if not any(p in l.lower() for p in NOISE_PATTERNS)]
-
-    # Carry forward company name to child rows that lack one.
-    # Trackr groups multiple programmes under one company, so child rows
-    # appear as plain text (no tabs) right after a tab-separated parent row.
-    fixed = []
-    last_company = ""
-    for l in lines:
-        if is_junk(l) or is_section_header(l):
-            continue
-        if is_date_fragment(l):
-            continue
-        if "\t" in l:
-            parts = l.split("\t")
-            if parts[0].strip():
-                last_company = parts[0].strip()
-            fixed.append(l)
-        else:
-            # Orphan row: only attach company if it looks like a programme name
-            if last_company:
-                fixed.append(f"{last_company}\t{l}")
-            else:
-                fixed.append(l)
-    return fixed
+    return lines
 
 
 def format_listing(line, is_event=False):
-    """Parse a tab-separated row into a readable Slack message block."""
-    if "\t" not in line:
-        return None
+    """Parse a tab-separated listing row into a readable Slack message block."""
     parts = [p.strip() for p in line.split("\t")]
     company = parts[0] if len(parts) > 0 else ""
     name = parts[1] if len(parts) > 1 else ""
@@ -122,7 +38,6 @@ def format_listing(line, is_event=False):
         return None
 
     if is_event:
-        # Events: Company | Programme | Eligibility | Opening | Closing | Format | Event Date
         opening = parts[3] if len(parts) > 3 else ""
         closing = parts[4] if len(parts) > 4 else ""
         fmt = parts[5] if len(parts) > 5 else ""
@@ -174,19 +89,16 @@ def main():
         for name, url in PAGES.items():
             print(f"Checking {name}...")
 
-            current_lines = extract_lines(pg, url)
+            current_lines = extract_rows(pg, url)
             current_set = set(current_lines)
 
             old_lines = state.get(name, {}).get("lines", [])
             old_set = set(old_lines)
 
             if not old_set:
-                print(f"  First run — saving baseline ({len(current_lines)} lines)")
+                print(f"  First run — saving baseline ({len(current_lines)} rows)")
             else:
-                new_items = current_set - old_set
-
-                # Only keep lines that look like actual listings (tab-separated)
-                new_listings = [item for item in new_items if "\t" in item]
+                new_listings = current_set - old_set
 
                 if new_listings:
                     is_event = name == "Events"
@@ -199,7 +111,7 @@ def main():
                         f"{items_text}"
                     )
                     notify_slack(message)
-                    print(f"  Notified Slack: {len(new_listings)} new listing(s)")
+                    print(f"  Notified Slack: {len(formatted)} new listing(s)")
                 else:
                     notify_slack(f":white_check_mark: *{name}* — no new listings in the last 30 mins.")
                     print(f"  No changes")
